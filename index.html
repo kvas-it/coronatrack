@@ -1,0 +1,241 @@
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <script src="https://d3js.org/d3.v5.min.js"></script>
+    <script src="data.js"></script>
+    <style type="text/css">
+body {
+  font-family: Helvetica, Arial, Sans-serif;
+  font-size: 12px;
+  padding: 20px 100px;
+}
+
+.graph {}
+
+.swatches {
+  line-height: 1.5;
+}
+
+.swatch {
+  padding: 2px;
+  white-space: nowrap;
+}
+    </style>
+  </head>
+  <body>
+    <h1>COVID-19 total cases, new cases and change in new cases</h1>
+    <div class="graph" id="cases"></div>
+
+    <script type="text/javascript">
+const margin = {top: 10, right: 50, bottom: 30, left: 10};
+const height = 900;
+const heights = {cases: 500, cases_d: 200, cases_dd: 200};
+const width = 1200;
+
+function makeData(records, regions, regionsToSkip) {
+  var data = [];
+
+  for (let i = 0; i < records.length; i++) {
+    var r = {date: new Date(records[i][0])};
+    for (let j = 0; j < regions.length; j++) {
+      if (regionsToSkip.includes(regions[j])) continue;
+      r[regions[j]] = records[i][j + 1];
+    }
+    data.push(r);
+  }
+
+  data.columns = ["date"]
+    .concat(regions.filter(r => !regionsToSkip.includes(r)));
+
+  return data;
+}
+
+function makeGraph(cases, cases_d, cases_dd) {
+  let regions = cases.columns.slice(1);
+
+  let stack = d3.stack()
+    .keys(regions)
+    .order(d3.stackOrderAscending)
+  let series = stack(cases);
+
+  let series_d = regions.map(r => {
+    let values = cases_d.map(c => ({v: c[r], d: c.date}));
+    values.key = r;
+    return values;
+  });
+  let series_dd = regions.map(r => {
+    let values = cases_dd.map(c => ({v: c[r], d: c.date}));
+    values.key = r;
+    return values;
+  });
+
+  let x = d3.scaleUtc()
+      .domain(d3.extent(cases, d => d.date))
+      .range([margin.left, width - margin.right]);
+
+  let y = d3.scaleLinear()
+      .domain([0, d3.max(series, d => d3.max(d, d => d[1]))]).nice()
+      .range([heights.cases - margin.bottom, margin.top])
+
+  let yAxis = g => g
+    .attr("transform", `translate(${width - margin.right},0)`)
+    .call(d3.axisRight(y))
+    .call(g => g.select(".domain").remove())
+    .call(g => g.select(".tick:last-of-type text").clone()
+      .attr("x", 3)
+      .attr("text-anchor", "start")
+      .attr("font-weight", "bold")
+      .text(cases.y));
+
+  let xAxis = g => g
+    .attr("transform", `translate(0,${heights.cases - margin.bottom})`)
+    .call(d3.axisBottom(x).ticks(width / 80).tickSizeOuter(0));
+
+  let area = d3.area()
+    .x(d => x(d.data.date))
+    .y0(d => y(d[0]))
+    .y1(d => y(d[1]));
+
+  let svg = d3.create("svg")
+    .attr("viewBox", [0, 0, width, height]);
+
+  svg.append("g")
+    .selectAll("path")
+    .data(series)
+    .join("path")
+      .attr("fill", ({key}) => color(key))
+      .attr("d", area)
+    .append("title")
+      .text(({key}) => key);
+
+  svg.append("g").call(xAxis);
+  svg.append("g").call(yAxis);
+
+  let y_d = d3.scaleLinear()
+    .domain([d3.min(cases_d, d => d3.min(regions.map(r => d[r]))),
+             d3.max(cases_d, d => d3.max(regions.map(r => d[r])))])
+    .range([heights.cases + heights.cases_d, heights.cases])
+
+  let y_dAxis = g => g
+    .attr("transform", `translate(${width - margin.right},0)`)
+    .call(d3.axisRight(y_d))
+    .call(g => g.select(".domain").remove())
+    .call(g => g.select(".tick:last-of-type text").clone()
+      .attr("x", 3)
+      .attr("text-anchor", "start")
+      .attr("font-weight", "bold")
+      .text(cases.y));
+
+  let line_d = d3.line()
+    .x(d => x(d.d))
+    .y(d => y_d(d.v))
+
+  svg.append("g")
+    .selectAll("path")
+    .data(series_d)
+    .join("path")
+      .attr("fill", "none")
+      .attr("stroke", ({key}) => color(key))
+      .attr("d", line_d)
+    .append("title")
+      .text(({key}) => key);
+
+  svg.append("g").call(y_dAxis);
+
+  let y_dd = d3.scaleLinear()
+    .domain([d3.min(cases_dd, d => d3.min(regions.map(r => d[r]))),
+             d3.max(cases_dd, d => d3.max(regions.map(r => d[r])))])
+    .range([heights.cases + heights.cases_d + heights.cases_dd,
+            heights.cases + heights.cases_d + margin.bottom])
+
+  let y_ddAxis = g => g
+    .attr("transform", `translate(${width - margin.right},0)`)
+    .call(d3.axisRight(y_dd))
+    .call(g => g.select(".domain").remove())
+    .call(g => g.select(".tick:last-of-type text").clone()
+      .attr("x", 3)
+      .attr("text-anchor", "start")
+      .attr("font-weight", "bold")
+      .text(cases.y));
+
+  let line_dd = d3.line()
+    .x(d => x(d.d))
+    .y(d => y_dd(d.v))
+
+  svg.append("g")
+    .selectAll("path")
+    .data(series_dd)
+    .join("path")
+      .attr("fill", "none")
+      .attr("stroke", ({key}) => color(key))
+      .attr("d", line_dd)
+    .append("title")
+      .text(({key}) => key);
+
+  svg.append("g").call(y_ddAxis);
+
+  return svg.node();
+}
+
+function makeKey(regions, excluded) {
+  let key = d3.create("div")
+    .classed("swatches", true);
+
+  regions.map(region => {
+    key.append("span")
+      .text(region)
+      .classed("swatch", true)
+      .style("background-color", color(region))
+      .on("click", function () {
+        let swatch = d3.select(this);
+        let active = !excluded.includes(region);
+        if (active) {
+          swatch
+            .property("active", false)
+            .style("background-color", "white");
+          excluded.push(region);
+        } else {
+          swatch
+            .property("active", true)
+            .style("background-color", color(region));
+          excluded.splice(excluded.indexOf(region), 1);
+        }
+        updateGraph();
+      });
+    key.append("span").text(" ");
+  });
+
+  return key.node();
+}
+
+let regions = allData.regions;
+let excludedRegions = [];
+let colorScheme = [];
+
+for (let i = 0; i < regions.length; i++) {
+  regions[i] += ': ' + allData.cases[allData.cases.length - 1][i + 1];
+  colorScheme.push(d3.interpolateSinebow(i / regions.length));
+}
+
+let color = d3.scaleOrdinal()
+  .domain(regions)
+  .range(colorScheme);
+
+function updateGraph() {
+  let cases = makeData(allData.cases, regions, excludedRegions);
+  let cases_d = makeData(allData.cases_d, regions, excludedRegions);
+  let cases_dd = makeData(allData.cases_dd, regions, excludedRegions);
+
+  let graph = makeGraph(cases, cases_d, cases_dd);
+
+  d3.select("#cases svg").remove();
+  d3.select("#cases").append(() => graph);
+}
+
+let key = makeKey(regions, excludedRegions);
+d3.select("#cases").append(() => key);
+
+updateGraph();
+    </script>
+  </body>
+</html>
