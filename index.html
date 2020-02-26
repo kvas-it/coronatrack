@@ -26,6 +26,7 @@ body {
     <h1>COVID-19 total cases, new cases and change in new cases</h1>
     <div class="graph" id="cases"></div>
 
+    Last updated <span id="last-up"></span> |
     <a href="https://coronavirus.zone/">Data source</a>
 
     <script type="text/javascript">
@@ -232,6 +233,8 @@ function updateGraph() {
 
   d3.select("#cases svg").remove();
   d3.select("#cases").append(() => graph);
+
+  d3.select("#last-up").text(cases[cases.length - 1].date);
 }
 
 let key = makeKey(regions, excludedRegions);
