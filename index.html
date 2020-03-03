@@ -12,8 +12,9 @@ body {
 
 .graph {}
 
-.swatches {
+.swatches, .time-selector {
   line-height: 1.5;
+  margin-bottom: 10px;
 }
 
 .swatch {
@@ -24,20 +25,38 @@ body {
   </head>
   <body>
     <h1>COVID-19 total cases, new cases and change in new cases</h1>
-    <div class="graph" id="cases"></div>
 
-    Last updated <span id="last-up"></span> |
-    <a href="https://coronavirus.zone/">Data source</a>
+    <div class="graph" id="cases"></div>
+    <p>Last updated <span id="last-up"></span></p>
+
+    <h2>More information</h2>
+
+    <ul>
+      <li><a href="https://www.who.int/emergencies/diseases/novel-coronavirus-2019">WHO information page</a></li>
+      <li><a href="https://www.ecdc.europa.eu/en/novel-coronavirus-china">Information by European Centre for Disease Prevention and Control</a></li>
+      <li><a href="https://www.cdc.gov/coronavirus/2019-ncov/">Information by US CDC</a></li>
+      <li><a href="https://gisanddata.maps.arcgis.com/apps/opsdashboard/index.html#/bda7594740fd40299423467b48e9ecf6">Map and tracker by John Hopkins CSSE</a></li>
+      <li><a href="https://thewuhanvirus.com/">Map and tracker by thebaselab</a></li>
+      <li><a href="https://coronavirus.zone/">Map by Anton Lukin</a> (data source for this website)</a></li>
+      <li><a href="https://bnonews.com/index.php/2020/02/the-latest-coronavirus-cases/">BNO News feed</a></li>
+    </ul>
 
     <script type="text/javascript">
 const margin = {top: 10, right: 50, bottom: 30, left: 10};
 const height = 900;
 const heights = {cases: 500, cases_d: 200, cases_dd: 200};
 const width = 1200;
+const periods = {
+  "All": 10000,
+  "Last week": 7,
+  "2 weeks": 14
+};
 
-function makeData(records, regions, regionsToSkip) {
+function makeData(records, regions, regionsToSkip, period) {
   var data = [];
+  var maxCount = periods[period[0]];
 
+  records = records.slice(-maxCount, records.length);
   for (let i = 0; i < records.length; i++) {
     var r = {date: new Date(records[i][0])};
     for (let j = 0; j < regions.length; j++) {
@@ -184,23 +203,35 @@ function makeKey(regions, excluded) {
   let key = d3.create("div")
     .classed("swatches", true);
 
+  key.append("span").text("Regions: ");
+
+  key.append("span")
+    .text(excluded.length > 10 ? "All" : "None")
+    .classed("swatch", true)
+    .style("background-color", excluded.length > 10 ? "white" : "grey")
+    .on("click", function () {
+      let swatch = d3.select(this);
+      let active = swatch.style("background-color") == "grey";
+      excluded.splice(0, excluded.length);
+      if (active) {
+        regions.map(r => {excluded.push(r);});
+      }
+      updateGraph();
+    });
+  key.append("span").text(" ");
+
   regions.map(region => {
     key.append("span")
       .text(region)
       .classed("swatch", true)
-      .style("background-color", color(region))
+      .style("background-color", excluded.includes(region) ? "white"
+                                                           : color(region))
       .on("click", function () {
         let swatch = d3.select(this);
         let active = !excluded.includes(region);
         if (active) {
-          swatch
-            .property("active", false)
-            .style("background-color", "white");
           excluded.push(region);
         } else {
-          swatch
-            .property("active", true)
-            .style("background-color", color(region));
           excluded.splice(excluded.indexOf(region), 1);
         }
         updateGraph();
@@ -211,9 +242,32 @@ function makeKey(regions, excluded) {
   return key.node();
 }
 
+function makeTimeSelector(period) {
+  let ts = d3.create("div").classed("time-selector", true);
+
+  ts.append("span").text("Time: ");
+
+  for (let p in periods) {
+    let isOn = period.includes(p);
+    ts.append("span")
+      .text(p)
+      .classed("swatch", true)
+      .style("background-color", isOn ? "#ccccff" : "white")
+      .on("click", function () {
+        let swatch = d3.select(this);
+        period[0] = p;
+        updateGraph();
+      });
+    ts.append("span").text(" ");
+  }
+
+  return ts.node();
+}
+
 let regions = allData.regions;
 let excludedRegions = [];
 let colorScheme = [];
+let period = ["All"];  // All | Last week | 2 weeks: array to modify in place.
 
 for (let i = 0; i < regions.length; i++) {
   regions[i] += ': ' + allData.cases[allData.cases.length - 1][i + 1];
@@ -225,20 +279,23 @@ let color = d3.scaleOrdinal()
   .range(colorScheme);
 
 function updateGraph() {
-  let cases = makeData(allData.cases, regions, excludedRegions);
-  let cases_d = makeData(allData.cases_d, regions, excludedRegions);
-  let cases_dd = makeData(allData.cases_dd, regions, excludedRegions);
+  let cases = makeData(allData.cases, regions, excludedRegions, period);
+  let cases_d = makeData(allData.cases_d, regions, excludedRegions, period);
+  let cases_dd = makeData(allData.cases_dd, regions, excludedRegions, period);
+
+  d3.select("#cases").html("");
+
+  let key = makeKey(regions, excludedRegions);
+  d3.select("#cases").append(() => key);
+
+  let timeSelector = makeTimeSelector(period);
+  d3.select("#cases").append(() => timeSelector);
 
   let graph = makeGraph(cases, cases_d, cases_dd);
-
-  d3.select("#cases svg").remove();
   d3.select("#cases").append(() => graph);
 
   d3.select("#last-up").text(cases[cases.length - 1].date);
 }
-
-let key = makeKey(regions, excludedRegions);
-d3.select("#cases").append(() => key);
 
 updateGraph();
     </script>
