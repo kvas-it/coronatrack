@@ -27,7 +27,6 @@ body {
     <h1>COVID-19 total cases, new cases and change in new cases</h1>
 
     <div class="graph" id="cases"></div>
-    <p>Last updated <span id="last-up"></span></p>
 
     <h2>More information</h2>
 
@@ -35,9 +34,8 @@ body {
       <li><a href="https://www.who.int/emergencies/diseases/novel-coronavirus-2019">WHO information page</a></li>
       <li><a href="https://www.ecdc.europa.eu/en/novel-coronavirus-china">Information by European Centre for Disease Prevention and Control</a></li>
       <li><a href="https://www.cdc.gov/coronavirus/2019-ncov/">Information by US CDC</a></li>
-      <li><a href="https://gisanddata.maps.arcgis.com/apps/opsdashboard/index.html#/bda7594740fd40299423467b48e9ecf6">Map and tracker by John Hopkins CSSE</a></li>
+      <li><a href="https://gisanddata.maps.arcgis.com/apps/opsdashboard/index.html#/bda7594740fd40299423467b48e9ecf6">Map and tracker by John Hopkins CSSE</a> (data source for this website)</li>
       <li><a href="https://thewuhanvirus.com/">Map and tracker by thebaselab</a></li>
-      <li><a href="https://coronavirus.zone/">Map by Anton Lukin</a> (data source for this website)</a></li>
       <li><a href="https://bnonews.com/index.php/2020/02/the-latest-coronavirus-cases/">BNO News feed</a></li>
       <li><a href="https://www.worldometers.info/coronavirus/">Worldometer stats and news feed</a></li>
     </ul>
@@ -294,8 +292,6 @@ function updateGraph() {
 
   let graph = makeGraph(cases, cases_d, cases_dd);
   d3.select("#cases").append(() => graph);
-
-  d3.select("#last-up").text(cases[cases.length - 1].date);
 }
 
 updateGraph();
