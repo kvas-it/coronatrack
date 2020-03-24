@@ -12,14 +12,20 @@ body {
 
 .graph {}
 
-.swatches, .time-selector {
+.swatches, .chart-options {
   line-height: 1.5;
   margin-bottom: 10px;
+}
+
+.chart-options {
+  float: left;
+  margin-right: 20px;
 }
 
 .swatch {
   padding: 2px;
   white-space: nowrap;
+  border-radius: 3px;
 }
     </style>
   </head>
@@ -47,20 +53,42 @@ const heights = {cases: 500, cases_d: 200, cases_dd: 200};
 const width = 1200;
 const periods = {
   "All": 10000,
-  "Last week": 7,
-  "2 weeks": 14
+  "1 month": 30,
+  "2 weeks": 14,
+  "1 week": 7
 };
+const smoothingOptions = {
+  "no": false,
+  "yes": true,
+}
 
-function makeData(records, regions, regionsToSkip, period) {
+function makeData(records, regions, regionsToSkip, period, smoothing) {
   var data = [];
   var maxCount = periods[period[0]];
+  var smooth = smoothingOptions[smoothing[0]];
 
   records = records.slice(-maxCount, records.length);
   for (let i = 0; i < records.length; i++) {
     var r = {date: new Date(records[i][0])};
     for (let j = 0; j < regions.length; j++) {
       if (regionsToSkip.includes(regions[j])) continue;
-      r[regions[j]] = records[i][j + 1];
+      if (smooth) {
+        var current, prev, next;
+        current = records[i][j + 1];
+        if (i == 0) {
+          next = records[i + 1][j + 1];
+          prev = 2 * current - next;  // linear interp from first 2 points
+        } else if (i == records.length - 1) {
+          prev = records[i - 1][j + 1];
+          next = 2 * current - prev;  // linear interp from last 2 points
+        } else {
+          prev = records[i - 1][j + 1];
+          next = records[i + 1][j + 1];
+        }
+        r[regions[j]] = (prev + 2 * current + next) / 4;
+      } else {
+        r[regions[j]] = records[i][j + 1];
+      }
     }
     data.push(r);
   }
@@ -241,20 +269,20 @@ function makeKey(regions, excluded) {
   return key.node();
 }
 
-function makeTimeSelector(period) {
-  let ts = d3.create("div").classed("time-selector", true);
+function chartOptions(name, options, current) {
+  let ts = d3.create("div").classed("chart-options", true);
 
-  ts.append("span").text("Time: ");
+  ts.append("span").text(name + ": ");
 
-  for (let p in periods) {
-    let isOn = period.includes(p);
+  for (let o in options) {
+    let isOn = current.includes(o);
     ts.append("span")
-      .text(p)
+      .text(o)
       .classed("swatch", true)
       .style("background-color", isOn ? "#ccccff" : "white")
       .on("click", function () {
         let swatch = d3.select(this);
-        period[0] = p;
+        current[0] = o;
         updateGraph();
       });
     ts.append("span").text(" ");
@@ -267,6 +295,7 @@ let regions = allData.regions;
 let excludedRegions = [];
 let colorScheme = [];
 let period = ["All"];  // All | Last week | 2 weeks: array to modify in place.
+let smoothing = ["no"];
 
 for (let i = 0; i < regions.length; i++) {
   regions[i] += ': ' + allData.cases[allData.cases.length - 1][i + 1];
@@ -278,20 +307,15 @@ let color = d3.scaleOrdinal()
   .range(colorScheme);
 
 function updateGraph() {
-  let cases = makeData(allData.cases, regions, excludedRegions, period);
-  let cases_d = makeData(allData.cases_d, regions, excludedRegions, period);
-  let cases_dd = makeData(allData.cases_dd, regions, excludedRegions, period);
+  let cases = makeData(allData.cases, regions, excludedRegions, period, smoothing);
+  let cases_d = makeData(allData.cases_d, regions, excludedRegions, period, smoothing);
+  let cases_dd = makeData(allData.cases_dd, regions, excludedRegions, period, smoothing);
 
   d3.select("#cases").html("");
-
-  let key = makeKey(regions, excludedRegions);
-  d3.select("#cases").append(() => key);
-
-  let timeSelector = makeTimeSelector(period);
-  d3.select("#cases").append(() => timeSelector);
-
-  let graph = makeGraph(cases, cases_d, cases_dd);
-  d3.select("#cases").append(() => graph);
+  d3.select("#cases").append(() => makeKey(regions, excludedRegions));
+  d3.select("#cases").append(() => chartOptions("Period", periods, period));
+  d3.select("#cases").append(() => chartOptions("Smoothing", smoothingOptions, smoothing));
+  d3.select("#cases").append(() => makeGraph(cases, cases_d, cases_dd));
 }
 
 updateGraph();
