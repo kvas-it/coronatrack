@@ -51,7 +51,7 @@ body {
     </ul>
 
     <script type="text/javascript">
-const margin = {top: 10, right: 70, bottom: 30, left: 30};
+const margin = {top: 10, right: 70, bottom: 30, left: 20};
 const height = 900;
 const heights = {cases: 500, cases_d: 200, cases_dd: 200};
 const width = 1200;
@@ -108,6 +108,8 @@ function makeChart(data, params_) {
   let height = params.height || 600;
   let width = params.width || 1200;
   let stacked = params.stacked || false;
+  let title = params.title || '?';
+  let titleSlug = title.toLowerCase().replace(/\s/g, "-");
   let series;
 
   if (stacked) {
@@ -151,7 +153,15 @@ function makeChart(data, params_) {
   chart.append("g").call(xAxis);
   chart.append("g").call(yAxis);
 
+  var tooltip = chart
+    .append("text")
+    .attr("x", margin.left * 2)
+    .attr("y", margin.top + 20)
+    .style("font-size", 15)
+    .text(title);
+
   if (stacked) {
+    let cls = 'area-' + titleSlug;
     let area = d3.area()
       .x(d => x(d.data.date))
       .y0(d => y(d[0]))
@@ -161,10 +171,23 @@ function makeChart(data, params_) {
       .selectAll("path")
       .data(series)
       .join("path")
+        .attr("class", cls)
         .attr("fill", ({key}) => color(key))
-        .attr("stroke-width", 0.5)
-        .attr("stroke", ({key}) => d3.hsl(color(key)).darker())
+        .attr("stroke-width", 1)
+        .attr("stroke", "none")
         .attr("d", area)
+        .on("mousemove", function(d, i) {
+          let last = d[d.length - 1];
+          let lastValue = last[1] - last[0];
+          tooltip.text(title + ': ' + d.key + ': ' + lastValue);
+        })
+        .on("mouseover", function(d) {
+          d3.selectAll("." + cls).style("opacity", .2);
+          d3.select(this).style("opacity", 1).style("stroke", "black");
+        })
+        .on("mouseleave", function(d) {
+          d3.selectAll("." + cls).style("opacity", 1).style("stroke", "none");
+        })
       .append("title")
         .text(({key}) => key);
   } else {
@@ -260,7 +283,7 @@ let smoothing = ["no"];
 let stacked = ["yes"];
 
 for (let i = 0; i < regions.length; i++) {
-  regions[i] += ': ' + allData.cases[allData.cases.length - 1][i + 1];
+  // regions[i] += ': ' + allData.cases[allData.cases.length - 1][i + 1];
   colorScheme.push(d3.interpolateSinebow(i / regions.length));
 }
 
@@ -279,8 +302,14 @@ function updateGraph() {
   d3.select("#cases").append(() => chartOptions("Smoothing", yesNo, smoothing));
   d3.select("#cases").append(() => chartOptions("Stacked", yesNo, stacked));
 
-  d3.select("#cases").append(() => makeChart(cases, {stacked: yesNo[stacked[0]]}));
-  d3.select("#cases").append(() => makeChart(cases_d, {stacked: yesNo[stacked[0]]}));
+  d3.select("#cases").append(() => makeChart(cases, {
+    stacked: yesNo[stacked[0]],
+    title: "Total cases",
+  }));
+  d3.select("#cases").append(() => makeChart(cases_d, {
+    stacked: yesNo[stacked[0]],
+    title: "Cases per day"
+  }));
 }
 
 updateGraph();
