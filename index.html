@@ -52,9 +52,8 @@ body {
 
     <script type="text/javascript">
 const margin = {top: 10, right: 70, bottom: 30, left: 20};
-const height = 900;
-const heights = {cases: 500, cases_d: 200, cases_dd: 200};
-const width = 1200;
+const stdHeight = 600;
+const stdWidth = 1200;
 const periods = {
   "All": 10000,
   "1 month": 30,
@@ -105,8 +104,8 @@ function makeData(records, regions, regionsToSkip, period, smoothing) {
 
 function makeChart(data, params_) {
   let params = params_ || {};
-  let height = params.height || 600;
-  let width = params.width || 1200;
+  let height = params.height || stdHeight;
+  let width = params.width || stdWidth;
   let stacked = params.stacked || false;
   let title = params.title || '?';
   let titleSlug = title.toLowerCase().replace(/\s/g, "-");
@@ -137,7 +136,8 @@ function makeChart(data, params_) {
     .call(d3.axisBottom(x).tickSize(-xTickSize).tickSizeOuter(-xTickSize));
 
   let y = d3.scaleLinear()
-    .domain([0, d3.max(series, d => d3.max(d, d => d[1] || d.v))]).nice()
+    .domain([d3.min(series, d => d3.min(d, d => d[1] || d.v)),
+             d3.max(series, d => d3.max(d, d => d[1] || d.v))]).nice()
     .range([height - margin.bottom, margin.top]);
   let yTickSize = width - margin.left - margin.right;
   let yAxis = g => g
@@ -309,6 +309,10 @@ function updateGraph() {
   d3.select("#cases").append(() => makeChart(cases_d, {
     stacked: yesNo[stacked[0]],
     title: "Cases per day"
+  }));
+  d3.select("#cases").append(() => makeChart(cases_dd, {
+    stacked: false,
+    title: "Cases per day change"
   }));
 }
 
