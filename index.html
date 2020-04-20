@@ -65,34 +65,76 @@ const yesNo = {
   "no": false,
   "yes": true,
 }
+const transmissionCurve = [
+  0,    // 1st day after becoming infected not infectious yet,
+  0,    // 2nd day
+  0.05, // 3rd day, start asymptomatic transmission
+  0.15, // 4th day
+  0.25, // 5th day, maybe symptoms
+  0.2,  // 6th day, decay from carantine, hospital, etc.
+  0.15, // 7
+  0.1,  // 8
+  0.05, // 9
+  0.05  // 10
+];
 
-function makeData(records, regions, regionsToSkip, period, smoothing) {
-  var data = [];
-  var maxCount = periods[period[0]];
-  var smooth = yesNo[smoothing[0]];
+function impliedRTransform(getValue, i, length) {
+  if (i < transmissionCurve.length) {
+    return 0;
+  } else {
+    let sourceN = transmissionCurve
+      .map((v, idx) => getValue(i - 1 - idx) * v)
+      .reduce((a, b) => a + b);
+    let curN = getValue(i);
+    if (sourceN <= 0) return 0;
+    if (curN <= 0) return 0;
+    return curN / sourceN;
+  }
+}
+
+function smoothTransform(getValue, i, length) {
+  if (i == 0 || i == length - 1) {
+    return getValue(i);
+  } else {
+    return (getValue(i - 1) + getValue(i + 1) + 2 * getValue(i)) / 4;
+  }
+}
+
+function rateTransform(getValue, i, length) {
+  if (i == 0) {
+    return 0;
+  } else {
+    return getValue(i) - getValue(i - 1);
+  }
+}
+
+function applyTransform(transform, records) {
+  let result = [];
+  for (let i = 0; i < records.length; i++) {
+    let r = [records[i][0]];
+    for (let j = 1; j < records[i].length; j++) {
+      r.push(transform(i_ => records[i_][j], i, records.length));
+    }
+    result.push(r)
+  }
+  return result;
+}
+
+function prepareData(records, regions, regionsToSkip, period, smoothing) {
+  let data = [];
+  let maxCount = periods[period[0]];
 
   records = records.slice(-maxCount, records.length);
+
+  if (yesNo[smoothing[0]]) {
+    records = applyTransform(smoothTransform, records);
+  }
+
   for (let i = 0; i < records.length; i++) {
     var r = {date: new Date(records[i][0])};
     for (let j = 0; j < regions.length; j++) {
       if (regionsToSkip.includes(regions[j])) continue;
-      if (smooth) {
-        var current, prev, next;
-        current = records[i][j + 1];
-        if (i == 0) {
-          next = records[i + 1][j + 1];
-          prev = 2 * current - next;  // linear interp from first 2 points
-        } else if (i == records.length - 1) {
-          prev = records[i - 1][j + 1];
-          next = 2 * current - prev;  // linear interp from last 2 points
-        } else {
-          prev = records[i - 1][j + 1];
-          next = records[i + 1][j + 1];
-        }
-        r[regions[j]] = (prev + 2 * current + next) / 4;
-      } else {
-        r[regions[j]] = records[i][j + 1];
-      }
+      r[regions[j]] = records[i][j + 1];
     }
     data.push(r);
   }
@@ -136,9 +178,10 @@ function makeChart(data, params_) {
     .attr("transform", `translate(0,${height - margin.bottom})`)
     .call(d3.axisBottom(x).tickSize(-xTickSize).tickSizeOuter(-xTickSize));
 
+  let minValue = params_.minValue || d3.min(series, d => d3.min(d, d => d[1] || d.v));
+  let maxValue = params_.maxValue || d3.max(series, d => d3.max(d, d => d[1] || d.v));
   let y = d3.scaleLinear()
-    .domain([d3.min(series, d => d3.min(d, d => d[1] || d.v)),
-             d3.max(series, d => d3.max(d, d => d[1] || d.v))]).nice()
+    .domain([minValue, maxValue]).nice()
     .range([height - margin.bottom, margin.top]);
   let yTickSize = width - margin.left - margin.right;
   let yAxis = g => g
@@ -292,9 +335,13 @@ let color = d3.scaleOrdinal()
   .range(colorScheme);
 
 function updateGraph() {
-  let cases = makeData(allData.cases, regions, excludedRegions, period, smoothing);
-  let cases_d = makeData(allData.cases_d, regions, excludedRegions, period, smoothing);
-  let cases_dd = makeData(allData.cases_dd, regions, excludedRegions, period, smoothing);
+  let cases = prepareData(allData.cases, regions, excludedRegions, period, smoothing);
+  let c_d = applyTransform(rateTransform, allData.cases)
+  let cases_d = prepareData(c_d, regions, excludedRegions, period, smoothing);
+  let c_dd = applyTransform(rateTransform, c_d)
+  let cases_dd = prepareData(c_dd, regions, excludedRegions, period, smoothing);
+  let i_r = applyTransform(impliedRTransform, c_d)
+  let implied_r = prepareData(i_r, regions, excludedRegions, period, smoothing);
 
   d3.select("#options").html("");
   d3.select("#options").append(() => makeKey(regions, excludedRegions));
@@ -309,11 +356,19 @@ function updateGraph() {
   }));
   d3.select("#cases").append(() => makeChart(cases_d, {
     stacked: yesNo[stacked[0]],
+    height: 400,
     title: "Cases per day"
   }));
   d3.select("#cases").append(() => makeChart(cases_dd, {
+    height: 400,
     stacked: false,
     title: "Cases per day change"
+  }));
+  d3.select("#cases").append(() => makeChart(implied_r, {
+    height: 400,
+    maxValue: 5,
+    stacked: false,
+    title: "Implied R"
   }));
 }
 
