@@ -53,18 +53,38 @@ body {
 
     <script type="text/javascript">
 const margin = {top: 10, right: 70, bottom: 30, left: 20};
+
 const stdHeight = 600;
 const stdWidth = 1200;
+
+const seriesOptions = {
+  "New cases": allData.cases,
+  "Deaths": allData.deaths,
+  "Recovered": allData.recovered,
+  "Active cases": allData.active,
+};
+
 const periods = {
   "All": 10000,
   "1 month": 30,
   "2 weeks": 14,
-  "1 week": 7
+  "1 week": 7,
 };
+
 const yesNo = {
   "no": false,
   "yes": true,
-}
+};
+
+const smoothingLevels = {
+  "0": 0,
+  "1": 1,
+  "2": 2,
+  "3": 3,
+  "5": 5,
+  "8": 8,
+};
+
 const transmissionCurve = [
   0,    // 1st day after becoming infected not infectious yet,
   0,    // 2nd day
@@ -96,7 +116,7 @@ function smoothTransform(getValue, i, length) {
   if (i == 0 || i == length - 1) {
     return getValue(i);
   } else {
-    return (getValue(i - 1) + getValue(i + 1) + 2 * getValue(i)) / 4;
+    return (getValue(i - 1) + getValue(i + 1) + getValue(i)) / 3;
   }
 }
 
@@ -126,7 +146,8 @@ function prepareData(records, regions, regionsToSkip, period, smoothing) {
 
   records = records.slice(-maxCount, records.length);
 
-  if (yesNo[smoothing[0]]) {
+  let smoothingLevel = smoothingLevels[smoothing[0]];
+  for (let i = 0; i < smoothingLevel; i++) {
     records = applyTransform(smoothTransform, records);
   }
 
@@ -244,7 +265,7 @@ function makeChart(data, params_) {
       .data(series)
       .join("path")
         .attr("fill", "none")
-        .attr("stroke-width", 1.5)
+        .attr("stroke-width", 2)
         .attr("stroke", ({key}) => color(key))
         .attr("d", line)
       .append("title")
@@ -320,56 +341,61 @@ function chartOptions(name, options, current) {
 
 let regions = allData.regions;
 let excludedRegions = [];
-let colorScheme = [];
 let period = ["All"];
-let smoothing = ["no"];
+let smoothing = ["0"];
 let stacked = ["no"];
+let series = ["New cases"];
 
+let colorScheme = [];
 for (let i = 0; i < regions.length; i++) {
-  // regions[i] += ': ' + allData.cases[allData.cases.length - 1][i + 1];
   colorScheme.push(d3.interpolateSinebow(i / regions.length));
 }
-
-let color = d3.scaleOrdinal()
-  .domain(regions)
-  .range(colorScheme);
+let color = d3.scaleOrdinal().domain(regions).range(colorScheme);
 
 function updateGraph() {
-  let cases = prepareData(allData.cases, regions, excludedRegions, period, smoothing);
-  let c_d = applyTransform(rateTransform, allData.cases)
-  let cases_d = prepareData(c_d, regions, excludedRegions, period, smoothing);
-  let c_dd = applyTransform(rateTransform, c_d)
-  let cases_dd = prepareData(c_dd, regions, excludedRegions, period, smoothing);
-  let i_r = applyTransform(impliedRTransform, c_d)
-  let implied_r = prepareData(i_r, regions, excludedRegions, period, smoothing);
-
   d3.select("#options").html("");
+  d3.select("#cases").html("");
+
   d3.select("#options").append(() => makeKey(regions, excludedRegions));
+  d3.select("#options").append(() => chartOptions("Series", seriesOptions, series));
   d3.select("#options").append(() => chartOptions("Period", periods, period));
-  d3.select("#options").append(() => chartOptions("Smoothing", yesNo, smoothing));
+  d3.select("#options").append(() => chartOptions("Smoothing", smoothingLevels, smoothing));
   d3.select("#options").append(() => chartOptions("Stacked", yesNo, stacked));
 
-  d3.select("#cases").html("");
-  d3.select("#cases").append(() => makeChart(cases, {
+  let data = seriesOptions[series[0]];
+  let c_data = prepareData(data, regions, excludedRegions, period, smoothing);
+  d3.select("#cases").append(() => makeChart(c_data, {
     stacked: yesNo[stacked[0]],
-    title: "Total cases",
+    title: series[0],
   }));
-  d3.select("#cases").append(() => makeChart(cases_d, {
+
+  let data_d = applyTransform(rateTransform, data)
+  let c_data_d = prepareData(data_d, regions, excludedRegions, period, smoothing);
+  d3.select("#cases").append(() => makeChart(c_data_d, {
     stacked: yesNo[stacked[0]],
     height: 400,
-    title: "Cases per day"
+    title: series[0] + " per day"
   }));
-  d3.select("#cases").append(() => makeChart(cases_dd, {
+
+  let data_dd = applyTransform(rateTransform, data_d)
+  let c_data_dd = prepareData(data_dd, regions, excludedRegions, period, smoothing);
+  d3.select("#cases").append(() => makeChart(c_data_dd, {
     height: 400,
     stacked: false,
-    title: "Cases per day change"
+    title: series[0] + " per day change"
   }));
-  d3.select("#cases").append(() => makeChart(implied_r, {
-    height: 400,
-    maxValue: 5,
-    stacked: false,
-    title: "Implied R"
-  }));
+
+  if (series[0] == "New cases") {
+    let impliedR = applyTransform(impliedRTransform, data_d)
+    let c_impliedR = prepareData(impliedR, regions, excludedRegions, period, smoothing);
+
+    d3.select("#cases").append(() => makeChart(c_impliedR, {
+      height: 400,
+      maxValue: 5,
+      stacked: false,
+      title: "Implied R"
+    }));
+  }
 }
 
 updateGraph();
