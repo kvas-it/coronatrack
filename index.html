@@ -10,9 +10,7 @@ body {
   padding: 20px 100px;
 }
 
-.graph {}
-
-.swatches, .chart-options {
+.regions, .chart-options {
   line-height: 1.5;
   margin-bottom: 10px;
 }
@@ -36,7 +34,10 @@ body {
   <body>
     <h1>COVID-19 total cases, new cases and change in new cases</h1>
 
-    <div class="graph" id="cases"></div>
+    <div>
+      <div id="options"></div>
+      <div id="cases"></div>
+    </div>
 
     <h2>More information</h2>
 
@@ -211,8 +212,7 @@ function makeChart(data, params_) {
 }
 
 function makeKey(regions, excluded) {
-  let key = d3.create("div")
-    .classed("swatches", true);
+  let key = d3.create("div").classed("regions", true);
 
   key.append("span").text("Regions: ");
 
@@ -278,9 +278,9 @@ function chartOptions(name, options, current) {
 let regions = allData.regions;
 let excludedRegions = [];
 let colorScheme = [];
-let period = ["All"];  // All | Last week | 2 weeks: array to modify in place.
+let period = ["All"];
 let smoothing = ["no"];
-let stacked = ["yes"];
+let stacked = ["no"];
 
 for (let i = 0; i < regions.length; i++) {
   // regions[i] += ': ' + allData.cases[allData.cases.length - 1][i + 1];
@@ -296,12 +296,13 @@ function updateGraph() {
   let cases_d = makeData(allData.cases_d, regions, excludedRegions, period, smoothing);
   let cases_dd = makeData(allData.cases_dd, regions, excludedRegions, period, smoothing);
 
-  d3.select("#cases").html("");
-  d3.select("#cases").append(() => makeKey(regions, excludedRegions));
-  d3.select("#cases").append(() => chartOptions("Period", periods, period));
-  d3.select("#cases").append(() => chartOptions("Smoothing", yesNo, smoothing));
-  d3.select("#cases").append(() => chartOptions("Stacked", yesNo, stacked));
+  d3.select("#options").html("");
+  d3.select("#options").append(() => makeKey(regions, excludedRegions));
+  d3.select("#options").append(() => chartOptions("Period", periods, period));
+  d3.select("#options").append(() => chartOptions("Smoothing", yesNo, smoothing));
+  d3.select("#options").append(() => chartOptions("Stacked", yesNo, stacked));
 
+  d3.select("#cases").html("");
   d3.select("#cases").append(() => makeChart(cases, {
     stacked: yesNo[stacked[0]],
     title: "Total cases",
