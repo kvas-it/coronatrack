@@ -27,6 +27,10 @@ body {
   white-space: nowrap;
   border-radius: 3px;
 }
+
+.tick line {
+  stroke: #ddd;
+}
     </style>
   </head>
   <body>
@@ -47,7 +51,7 @@ body {
     </ul>
 
     <script type="text/javascript">
-const margin = {top: 10, right: 50, bottom: 30, left: 10};
+const margin = {top: 10, right: 70, bottom: 30, left: 30};
 const height = 900;
 const heights = {cases: 500, cases_d: 200, cases_dd: 200};
 const width = 1200;
@@ -57,7 +61,7 @@ const periods = {
   "2 weeks": 14,
   "1 week": 7
 };
-const smoothingOptions = {
+const yesNo = {
   "no": false,
   "yes": true,
 }
@@ -65,7 +69,7 @@ const smoothingOptions = {
 function makeData(records, regions, regionsToSkip, period, smoothing) {
   var data = [];
   var maxCount = periods[period[0]];
-  var smooth = smoothingOptions[smoothing[0]];
+  var smooth = yesNo[smoothing[0]];
 
   records = records.slice(-maxCount, records.length);
   for (let i = 0; i < records.length; i++) {
@@ -99,131 +103,88 @@ function makeData(records, regions, regionsToSkip, period, smoothing) {
   return data;
 }
 
-function makeGraph(cases, cases_d, cases_dd) {
-  let regions = cases.columns.slice(1);
+function makeChart(data, params_) {
+  let params = params_ || {};
+  let height = params.height || 600;
+  let width = params.width || 1200;
+  let stacked = params.stacked || false;
+  let series;
 
-  let stack = d3.stack()
-    .keys(regions)
-    .order(d3.stackOrderAscending)
-  let series = stack(cases);
+  if (stacked) {
+    let stack = d3.stack()
+      .keys(regions)
+      .order(d3.stackOrderAscending)
+    series = stack(data);
+  } else {
+    series = regions.map(r => {
+      let values = data.map(c => ({v: c[r], d: c.date}));
+      values.key = r;
+      return values;
+    });
+  }
 
-  let series_d = regions.map(r => {
-    let values = cases_d.map(c => ({v: c[r], d: c.date}));
-    values.key = r;
-    return values;
-  });
-  let series_dd = regions.map(r => {
-    let values = cases_dd.map(c => ({v: c[r], d: c.date}));
-    values.key = r;
-    return values;
-  });
-
-  let x = d3.scaleUtc()
-      .domain(d3.extent(cases, d => d.date))
-      .range([margin.left, width - margin.right]);
-
-  let y = d3.scaleLinear()
-      .domain([0, d3.max(series, d => d3.max(d, d => d[1]))]).nice()
-      .range([heights.cases - margin.bottom, margin.top])
-
-  let yAxis = g => g
-    .attr("transform", `translate(${width - margin.right},0)`)
-    .call(d3.axisRight(y))
-    .call(g => g.select(".domain").remove())
-    .call(g => g.select(".tick:last-of-type text").clone()
-      .attr("x", 3)
-      .attr("text-anchor", "start")
-      .attr("font-weight", "bold")
-      .text(cases.y));
-
-  let xAxis = g => g
-    .attr("transform", `translate(0,${heights.cases - margin.bottom})`)
-    .call(d3.axisBottom(x).ticks(width / 80).tickSizeOuter(0));
-
-  let area = d3.area()
-    .x(d => x(d.data.date))
-    .y0(d => y(d[0]))
-    .y1(d => y(d[1]));
-
-  let svg = d3.create("svg")
+  let chart = d3.create("svg")
     .attr("viewBox", [0, 0, width, height]);
 
-  svg.append("g")
-    .selectAll("path")
-    .data(series)
-    .join("path")
-      .attr("fill", ({key}) => color(key))
-      .attr("d", area)
-    .append("title")
-      .text(({key}) => key);
+  let x = d3.scaleUtc()
+      .domain(d3.extent(data, d => d.date))
+      .range([margin.left, width - margin.right]);
+  let xTickSize = height - margin.top - margin.bottom;
+  let xAxis = g => g
+    .attr("transform", `translate(0,${height - margin.bottom})`)
+    .call(d3.axisBottom(x).tickSize(-xTickSize).tickSizeOuter(-xTickSize));
 
-  svg.append("g").call(xAxis);
-  svg.append("g").call(yAxis);
-
-  let y_d = d3.scaleLinear()
-    .domain([d3.min(cases_d, d => d3.min(regions.map(r => d[r]))),
-             d3.max(cases_d, d => d3.max(regions.map(r => d[r])))])
-    .range([heights.cases + heights.cases_d, heights.cases])
-
-  let y_dAxis = g => g
+  let y = d3.scaleLinear()
+    .domain([0, d3.max(series, d => d3.max(d, d => d[1] || d.v))]).nice()
+    .range([height - margin.bottom, margin.top]);
+  let yTickSize = width - margin.left - margin.right;
+  let yAxis = g => g
     .attr("transform", `translate(${width - margin.right},0)`)
-    .call(d3.axisRight(y_d))
+    .call(d3.axisRight(y).tickSize(-yTickSize).tickSizeOuter(-yTickSize))
     .call(g => g.select(".domain").remove())
     .call(g => g.select(".tick:last-of-type text").clone()
       .attr("x", 3)
       .attr("text-anchor", "start")
       .attr("font-weight", "bold")
-      .text(cases.y));
+      .text(data.y));
 
-  let line_d = d3.line()
-    .x(d => x(d.d))
-    .y(d => y_d(d.v))
+  chart.append("g").call(xAxis);
+  chart.append("g").call(yAxis);
 
-  svg.append("g")
-    .selectAll("path")
-    .data(series_d)
-    .join("path")
-      .attr("fill", "none")
-      .attr("stroke", ({key}) => color(key))
-      .attr("d", line_d)
-    .append("title")
-      .text(({key}) => key);
+  if (stacked) {
+    let area = d3.area()
+      .x(d => x(d.data.date))
+      .y0(d => y(d[0]))
+      .y1(d => y(d[1]));
 
-  svg.append("g").call(y_dAxis);
+    chart.append("g")
+      .selectAll("path")
+      .data(series)
+      .join("path")
+        .attr("fill", ({key}) => color(key))
+        .attr("stroke-width", 0.5)
+        .attr("stroke", ({key}) => d3.hsl(color(key)).darker())
+        .attr("d", area)
+      .append("title")
+        .text(({key}) => key);
+  } else {
+    let line = d3.line()
+      .x(d => x(d.d))
+      .y(d => y(d.v));
 
-  let y_dd = d3.scaleLinear()
-    .domain([d3.min(cases_dd, d => d3.min(regions.map(r => d[r]))),
-             d3.max(cases_dd, d => d3.max(regions.map(r => d[r])))])
-    .range([heights.cases + heights.cases_d + heights.cases_dd,
-            heights.cases + heights.cases_d + margin.bottom])
+    chart.append("g")
+      .selectAll("path")
+      .data(series)
+      .join("path")
+        .attr("fill", "none")
+        .attr("stroke-width", 1.5)
+        .attr("stroke", ({key}) => color(key))
+        .attr("d", line)
+      .append("title")
+        .text(({key}) => key);
+  }
 
-  let y_ddAxis = g => g
-    .attr("transform", `translate(${width - margin.right},0)`)
-    .call(d3.axisRight(y_dd))
-    .call(g => g.select(".domain").remove())
-    .call(g => g.select(".tick:last-of-type text").clone()
-      .attr("x", 3)
-      .attr("text-anchor", "start")
-      .attr("font-weight", "bold")
-      .text(cases.y));
-
-  let line_dd = d3.line()
-    .x(d => x(d.d))
-    .y(d => y_dd(d.v))
-
-  svg.append("g")
-    .selectAll("path")
-    .data(series_dd)
-    .join("path")
-      .attr("fill", "none")
-      .attr("stroke", ({key}) => color(key))
-      .attr("d", line_dd)
-    .append("title")
-      .text(({key}) => key);
-
-  svg.append("g").call(y_ddAxis);
-
-  return svg.node();
+  return chart.node();
 }
 
 function makeKey(regions, excluded) {
@@ -296,6 +257,7 @@ let excludedRegions = [];
 let colorScheme = [];
 let period = ["All"];  // All | Last week | 2 weeks: array to modify in place.
 let smoothing = ["no"];
+let stacked = ["yes"];
 
 for (let i = 0; i < regions.length; i++) {
   regions[i] += ': ' + allData.cases[allData.cases.length - 1][i + 1];
@@ -314,8 +276,11 @@ function updateGraph() {
   d3.select("#cases").html("");
   d3.select("#cases").append(() => makeKey(regions, excludedRegions));
   d3.select("#cases").append(() => chartOptions("Period", periods, period));
-  d3.select("#cases").append(() => chartOptions("Smoothing", smoothingOptions, smoothing));
-  d3.select("#cases").append(() => makeGraph(cases, cases_d, cases_dd));
+  d3.select("#cases").append(() => chartOptions("Smoothing", yesNo, smoothing));
+  d3.select("#cases").append(() => chartOptions("Stacked", yesNo, stacked));
+
+  d3.select("#cases").append(() => makeChart(cases, {stacked: yesNo[stacked[0]]}));
+  d3.select("#cases").append(() => makeChart(cases_d, {stacked: yesNo[stacked[0]]}));
 }
 
 updateGraph();
