@@ -30,15 +30,115 @@ body {
 .tick line {
   stroke: #ddd;
 }
+
+dt {
+  font-weight: bold;
+}
     </style>
   </head>
   <body>
-    <h1>COVID-19 total cases, new cases and change in new cases</h1>
+    <h1>COVID-19 stats</h1>
 
     <div>
       <div id="options"></div>
       <div id="cases"></div>
     </div>
+
+    <h2>What is all this?</h2>
+
+    <p>
+      The purpose of this website is to track the development of COVID-19
+      pandemic worldwide and in particular countries in order to have a better
+      idea of what's going on and what to expect. There are many other trackers
+      with different focuses: here we focus on understanding the dynamics of
+      the infection numbers in different countries.
+    <p>
+      The website is updated daily and is always showing yesterday's data (we
+      think that it's good enough at this point).
+    </p>
+
+    <p>
+      The list below explains in more detail what each graph and parameter
+      means and how things are calculated.
+    </p>
+
+    <dl>
+      <dt>New cases</dt>
+      <dd>The number of officialy reported infected people based on JHU data
+      (see below). Everyone, who has been officially diagnosed with COVID-19
+      will be counted in this number. It's almost certainly below the actual
+      number of infected people because of delays in reporting and not everyone
+      being tested, but this is the best basic data that we have.</dd>
+
+      <dt>Deaths</dt>
+      <dd>The number of officialy reported deaths from COVID-19 based on JHU
+      data.</dd>
+
+      <dt>Recovered</dt>
+      <dd>The number of people who have recovered from the disease. Some part
+      of this is estimated (at least in some countries) because people with
+      light symptoms are not hospitalized and their condition is not always 
+      tracked.
+      </dd>
+
+      <dt>Active cases</dt>
+      <dd>The difference between <b>New cases</b> and the sum of <b>Deaths</b>
+      and <b>Recovered</b>. This is the number of people that are currently
+      sick.</dd>
+
+      <dt>X per day</dt>
+      <dd>The change rate of X: the difference between todays number and the
+      number of the previous day. This is a discrete equivalent of
+      derivative of X.</dd>
+
+      <dt>X per day change</dt>
+      <dd>The change in the rate of change of X: the difference between todays
+      rate of change and yesterday's rate of change. This is similar to 2nd
+      derivative of X.</dd>
+
+      <dt>Implied R</dt>
+      <dd>Transmission rate, calculated based on the <b>New cases per day</b>
+      of the last two weeks. We take a weighted average of the new cases in the
+      last days (centered between 5 and 6 days ago) and divide the today's new
+      cases by that number. It shows how many new people were infected by one
+      person, who was officially counted as infected about a week ago. When R
+      is above 1, the number of infected people grows exponentially, when it's
+      below 1, it decays.<dd>
+
+      <dt>Period</dt>
+      <dd>The period control allows you to see all data or only last month,
+      last two weeks or last week.</dd>
+
+      <dt>Smoothing</dt>
+      <dd>The data as is contains lots of jumps. Some of these jumps are real,
+      some are artifacts of reporting. By averaging the numbers over time we
+      can get a less jittery curve where the main trends are easier to see.
+      Higher levels of smoothing result in more averaging. <b>Note:</b>
+      Smoothing is always applied to the main statistic and the rate of change,
+      rate of change of rate of change and R are calculated from smoothed data.
+      </dd>
+
+      <dt>SmoothType</dt>
+      <dd>There are different ways to average over time: <b>SMA</b> is a simple
+      moving average, where the numbers of previous L days are added to today's
+      number and divided by L+1 (where L is the smoothing level); <b>EMA</b> is
+      exponential moving average, that starts with the original number and then
+      each day divides yesterday's EMA by (L+1)/L and adds today's number
+      divided by L+1; <b>FWD</b> repeatedly averages each day with the average
+      of the day before it and the day after it (except for the first and the
+      last) &mdash; it uses future data, so it's less backwards-looking but it
+      also overweighs the last data point.</dd>
+
+      <dt>Stacked</dt>
+      <dd>The graphs can stack countries data on top of each other. This makes
+      it easier to see the total amount (over all countries) and how each
+      country relates to the total. We don't stack the change in the rate of
+      change because these numbers are often negative and adding them looks
+      confusing. We also don't stack the implied R because transmission rates
+      are not additive (so R of the whole is not equal to the sum of R's of the
+      parts).</dd>
+
+    </dl>
 
     <h2>More information</h2>
 
@@ -81,10 +181,10 @@ const yesNo = {
 const smoothingLevels = {
   "0": 0,
   "1": 1,
-  "2": 2,
   "3": 3,
-  "5": 5,
-  "8": 8,
+  "6": 6,
+  "10": 9,
+  "15": 15,
 };
 
 const transmissionCurve = [
@@ -114,13 +214,65 @@ function impliedRTransform(getValue, i, length) {
   }
 }
 
-function smoothTransform(getValue, i, length) {
+function applyTransform(transform, records) {
+  let result = [];
+  let last = {};
+  for (let i = 0; i < records.length; i++) {
+    let r = [records[i][0]];
+    for (let j = 1; j < records[i].length; j++) {
+      last[j] =transform(i_ => records[i_][j], i, records.length, last[j]); 
+      r.push(last[j]);
+    }
+    result.push(r)
+  }
+  return result;
+}
+
+function simpleMovingAverage(windowSize) {
+  return function (getValue, i, length, last) {
+    if (i == 0) {
+      return getValue(i);
+    } else {
+      let dropped = Math.max(0, i - windowSize);
+      return last - getValue(dropped) / windowSize + getValue(i) / windowSize;
+    }
+  };
+}
+
+function expMovingAverage(windowSize) {
+  return function (getValue, i, length, last) {
+    if (i == 0) {
+      return getValue(i);
+    } else {
+      let alpha = 1 / windowSize;
+      return last * (1 - alpha) + getValue(i) * alpha;
+    }
+  };
+}
+
+function fwdSmoothTransform(getValue, i, length) {
   if (i == 0 || i == length - 1) {
     return getValue(i);
   } else {
     return (getValue(i - 1) + getValue(i + 1) + getValue(i)) / 3;
   }
 }
+
+
+let smoothingFunctions = {
+  "FWD": function (level, records) {
+    for (let i = 0; i < level; i++) {
+      records = applyTransform(fwdSmoothTransform, records);
+    }
+    return records;
+  },
+  "SMA": function (level, records) {
+    return applyTransform(simpleMovingAverage(level + 1), records);
+  },
+  "EMA": function (level, records) {
+    return applyTransform(expMovingAverage(level + 1), records);
+  },
+};
 
 function rateTransform(getValue, i, length) {
   if (i == 0) {
@@ -130,45 +282,25 @@ function rateTransform(getValue, i, length) {
   }
 }
 
-function applyTransform(transform, records) {
-  let result = [];
-  for (let i = 0; i < records.length; i++) {
-    let r = [records[i][0]];
-    for (let j = 1; j < records[i].length; j++) {
-      r.push(transform(i_ => records[i_][j], i, records.length));
-    }
-    result.push(r)
+function makeChart(records, params_) {
+  if (params_.maxCount) {
+    records = records.slice(-params_.maxCount, records.length);
   }
-  return result;
-}
 
-function prepareData(records, regions, regionsToSkip, period, smoothing) {
   let data = [];
-  let maxCount = periods[period[0]];
-
-  records = records.slice(-maxCount, records.length);
-
-  let smoothingLevel = smoothingLevels[smoothing[0]];
-  for (let i = 0; i < smoothingLevel; i++) {
-    records = applyTransform(smoothTransform, records);
-  }
 
   for (let i = 0; i < records.length; i++) {
     var r = {date: new Date(records[i][0])};
     for (let j = 0; j < regions.length; j++) {
-      if (regionsToSkip.includes(regions[j])) continue;
+      if (excludedRegions.includes(regions[j])) continue;
       r[regions[j]] = records[i][j + 1];
     }
     data.push(r);
   }
 
   data.columns = ["date"]
-    .concat(regions.filter(r => !regionsToSkip.includes(r)));
+    .concat(regions.filter(r => !excludedRegions.includes(r)));
 
-  return data;
-}
-
-function makeChart(data, params_) {
   let params = params_ || {};
   let height = params.height || stdHeight;
   let width = params.width || stdWidth;
@@ -345,6 +477,7 @@ let regions = allData.regions;
 let excludedRegions = [];
 let period = ["All"];
 let smoothing = ["0"];
+let smoothingType = ["SMA"];
 let stacked = ["no"];
 let series = ["New cases"];
 
@@ -362,40 +495,45 @@ function updateGraph() {
   d3.select("#options").append(() => chartOptions("Series", seriesOptions, series));
   d3.select("#options").append(() => chartOptions("Period", periods, period));
   d3.select("#options").append(() => chartOptions("Smoothing", smoothingLevels, smoothing));
+  d3.select("#options").append(() => chartOptions("SmoothType", smoothingFunctions, smoothingType));
   d3.select("#options").append(() => chartOptions("Stacked", yesNo, stacked));
 
   let data = seriesOptions[series[0]];
-  let c_data = prepareData(data, regions, excludedRegions, period, smoothing);
-  d3.select("#cases").append(() => makeChart(c_data, {
+  let smoothingLevel = smoothingLevels[smoothing[0]];
+  let smoothingFunction = smoothingFunctions[smoothingType[0]];
+  data = smoothingFunction(smoothingLevel, data);
+
+  d3.select("#cases").append(() => makeChart(data, {
     stacked: yesNo[stacked[0]],
+    maxCount: periods[period[0]],
     title: series[0],
   }));
 
   let data_d = applyTransform(rateTransform, data)
-  let c_data_d = prepareData(data_d, regions, excludedRegions, period, smoothing);
-  d3.select("#cases").append(() => makeChart(c_data_d, {
+  d3.select("#cases").append(() => makeChart(data_d, {
     stacked: yesNo[stacked[0]],
     height: 400,
-    title: series[0] + " per day"
+    maxCount: periods[period[0]],
+    title: series[0] + " per day",
   }));
 
   let data_dd = applyTransform(rateTransform, data_d)
-  let c_data_dd = prepareData(data_dd, regions, excludedRegions, period, smoothing);
-  d3.select("#cases").append(() => makeChart(c_data_dd, {
+  d3.select("#cases").append(() => makeChart(data_dd, {
     height: 400,
     stacked: false,
-    title: series[0] + " per day change"
+    maxCount: periods[period[0]],
+    title: series[0] + " per day change",
   }));
 
   if (series[0] == "New cases") {
     let impliedR = applyTransform(impliedRTransform, data_d)
-    let c_impliedR = prepareData(impliedR, regions, excludedRegions, period, smoothing);
-
-    d3.select("#cases").append(() => makeChart(c_impliedR, {
+    d3.select("#cases").append(() => makeChart(impliedR, {
       height: 400,
       maxValue: 5,
+      minValue: -0.1,
       stacked: false,
-      title: "Implied R"
+      maxCount: periods[period[0]],
+      title: "Implied R",
     }));
   }
 }
