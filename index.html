@@ -332,8 +332,10 @@ function makeChart(records, params_) {
     .attr("transform", `translate(0,${height - margin.bottom})`)
     .call(d3.axisBottom(x).tickSize(-xTickSize).tickSizeOuter(-xTickSize));
 
-  let minValue = params_.minValue || d3.min(series, d => d3.min(d, d => d[1] || d.v));
-  let maxValue = params_.maxValue || d3.max(series, d => d3.max(d, d => d[1] || d.v));
+  let minValue = Math.max(params_.minValue || -1e10,
+			  d3.min(series, d => d3.min(d, d => d[1] || d.v)));
+  let maxValue = Math.min(params_.maxValue || 1e10,
+	  	          d3.max(series, d => d3.max(d, d => d[1] || d.v)));
   let y = d3.scaleLinear()
     .domain([minValue, maxValue]).nice()
     .range([height - margin.bottom, margin.top]);
@@ -529,7 +531,7 @@ function updateGraph() {
     d3.select("#cases").append(() => makeChart(impliedR, {
       height: 400,
       maxValue: 5,
-      minValue: -0.1,
+      minValue: 0,
       stacked: false,
       maxCount: periods[period[0]],
       title: "Implied R",
